@@ -6,7 +6,7 @@ public class ShortUrl {
     private final String shortUrl;
     private final String longUrl;
     private final LocalDateTime createdAt;
-    private final int clickLimit;
+    private int clickLimit;
     private final int daysToLive;
     private int clicks;
 
@@ -25,6 +25,11 @@ public class ShortUrl {
 
     public int getClicks() {
         return clicks;
+    }
+
+    public void setClickLimit(int clickLimit){
+        this.clickLimit = clickLimit;
+        this.clicks = clickLimit;
     }
 
     public int getClickLimit() {

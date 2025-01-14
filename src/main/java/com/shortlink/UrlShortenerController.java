@@ -1,5 +1,7 @@
 package com.shortlink;
 import jakarta.servlet.http.HttpSession;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
@@ -7,6 +9,7 @@ import org.springframework.http.HttpStatus;
 
 import java.io.Serializable;
 import java.net.URI;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -15,14 +18,19 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/url")
 public class UrlShortenerController {
     private final Map<String, List<ShortUrl>> urlStore = new ConcurrentHashMap<>();
+    private int defaultDaysToLive;
 
     @PostMapping("/short")
     public Map<String, Object> shortenUrl(@RequestParam(value = "UUID", required = false, defaultValue = "") String userUUID,
                                @RequestParam String longUrl,
                                @RequestParam(value = "clickLimit", required = false, defaultValue = "10") int clickLimit,
-                               @RequestParam(value = "daysToLive", required = false, defaultValue = "1") int daysToLive) {
+                               @RequestParam(value = "daysToLive", required = false) int daysToLive) {
         if (Objects.equals(userUUID, "")) {
             userUUID = UUID.randomUUID().toString();
+        }
+
+        if (Objects.equals(daysToLive, null)) {
+            daysToLive = getDefaultDaysToLive();
         }
 
         String url = generateShortUrl(longUrl, userUUID);
@@ -96,8 +104,68 @@ public class UrlShortenerController {
         }
     }
 
+    @PostMapping("/update")
+    public ResponseEntity<String> updateClickLimit(@RequestParam String userUUID,
+                                                    @RequestParam String shortUrl,
+                                                   @RequestParam int clickLimit){
+
+        if (userUUID == null || userUUID.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Missing UUID.");
+        }
+
+        List<ShortUrl> shortUrls = urlStore.get(userUUID);
+
+        if (shortUrls == null || shortUrls.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("URLs don't exist."); // Пользователь не найден
+        }
+
+        ShortUrl targetUrl = shortUrls.stream()
+                .filter(url -> url.getShortUrl().equals(shortUrl))
+                .findFirst()
+                .orElse(null);
+
+        if (targetUrl == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("URL NOT FOUND."); // Ссылка не найдена
+        }
+
+        targetUrl.setClickLimit(clickLimit);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body("URL clickLimit is updated");
+    }
+
+    @PostMapping("/delete")
+    public ResponseEntity<String> deleteURL(@RequestParam String userUUID,
+                                                   @RequestParam String shortUrl){
+
+        if (userUUID == null || userUUID.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Missing UUID.");
+        }
+
+        List<ShortUrl> shortUrls = urlStore.get(userUUID);
+
+        if (shortUrls == null || shortUrls.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("URLs don't exist."); // Пользователь не найден
+        }
+
+        ShortUrl targetUrl = shortUrls.stream()
+                .filter(url -> url.getShortUrl().equals(shortUrl))
+                .findFirst()
+                .orElse(null);
+
+        if (targetUrl == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("URL NOT FOUND."); // Ссылка не найдена
+        }
+
+        shortUrls.remove(targetUrl);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body("URL is deleted");
+    }
+
+    @ConfigurationProperties(prefix = "url.shortener")
+    public int getDefaultDaysToLive() {
+        return defaultDaysToLive;
+    }
+
     private String generateShortUrl(String longUrl, String userUUID) {
-        int hashCode = (longUrl + userUUID).hashCode();
+        int hashCode = (longUrl + userUUID + LocalDateTime.now().toString()).hashCode();
 
         String base64Hash = Base64.getUrlEncoder()
                 .withoutPadding()
